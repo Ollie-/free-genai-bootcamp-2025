@@ -1,18 +1,8 @@
 from flask import request, jsonify, g
 from flask_cors import cross_origin
-<<<<<<< HEAD
-<<<<<<< HEAD
 from datetime import datetime, timezone
 import math
 import sqlite3
-=======
-from datetime import datetime
-import math
->>>>>>> efcf349107dbf015287c66b6ddda4b3dbd1b7279
-=======
-from datetime import datetime
-import math
->>>>>>> efcf349107dbf015287c66b6ddda4b3dbd1b7279
 
 def load(app):
   # todo /study_sessions POST
@@ -45,14 +35,12 @@ def load(app):
           g.name as group_name,
           sa.id as activity_id,
           sa.name as activity_name,
-          ss.created_at,
           COUNT(wri.id) as review_items_count
         FROM study_sessions ss
         JOIN groups g ON g.id = ss.group_id
         JOIN study_activities sa ON sa.id = ss.study_activity_id
         LEFT JOIN word_review_items wri ON wri.study_session_id = ss.id
         GROUP BY ss.id
-        ORDER BY ss.created_at DESC
         LIMIT ? OFFSET ?
       ''', (per_page, offset))
       sessions = cursor.fetchall()
@@ -64,8 +52,6 @@ def load(app):
           'group_name': session['group_name'],
           'activity_id': session['activity_id'],
           'activity_name': session['activity_name'],
-          'start_time': session['created_at'],
-          'end_time': session['created_at'],  # For now, just use the same time since we don't track end time
           'review_items_count': session['review_items_count']
         } for session in sessions],
         'total': total_count,
@@ -76,82 +62,70 @@ def load(app):
     except Exception as e:
       return jsonify({"error": str(e)}), 500
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+  # Implement POST route for study sessions
   @app.route('/api/study-sessions', methods=['POST'])
   @cross_origin()
   def create_study_session():
+    try:
+      # Check if request is JSON
       if not request.is_json:
-          return jsonify({'error': 'Content-Type must be application/json'}), 400
+        return jsonify({'error': 'Content-Type must be application/json'}), 400
       
-      def validate_study_session(data):
-          required_fields = ['group_id', 'study_activity_id']
-          return all(field in data for field in required_fields)
-
+      # Get JSON data
       data = request.get_json()
       
-      if not validate_study_session(data):
-          return jsonify({'error': 'Missing required fields. Need group_id and study_activity_id'}), 400
-
+      # Validate required fields
+      required_fields = ['group_id', 'study_activity_id']
+      if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+      
+      # Get database connection
+      db_conn = app.db.get()
+      cursor = db_conn.cursor()
+      
+      # Validate group_id exists
+      cursor.execute('SELECT 1 FROM groups WHERE id = ?', (data['group_id'],))
+      if not cursor.fetchone():
+        return jsonify({'error': 'Invalid group_id'}), 400
+      
+      # Validate study_activity_id exists
+      cursor.execute('SELECT 1 FROM study_activities WHERE id = ?', (data['study_activity_id'],))
+      if not cursor.fetchone():
+        return jsonify({'error': 'Invalid study_activity_id'}), 400
+      
+      # Prepare new session data
       new_session = {
-          'group_id': data['group_id'],
-          'study_activity_id': data['study_activity_id'],
-          'created_at': datetime.now(timezone.utc).isoformat()
+        'group_id': data['group_id'],
+        'study_activity_id': data['study_activity_id'],
       }
-
+      
       try:
-          cursor = app.db.cursor()
-          
-          # Log incoming data
-          print(f"Received data: {new_session}")
-          
-          # Verify group_id exists with detailed logging
-          cursor.execute('SELECT * FROM groups WHERE id = ?', (new_session['group_id'],))
-          group = cursor.fetchone()
-          if not group:
-              print(f"Group with id {new_session['group_id']} does not exist")
-              cursor.execute('SELECT * FROM groups')
-              print("Available groups:", [dict(row) for row in cursor.fetchall()])
-              return jsonify({'error': f'Group with id {new_session["group_id"]} does not exist'}), 400
-          
-          # Verify study_activity_id exists with detailed logging
-          cursor.execute('SELECT * FROM study_activities WHERE id = ?', (new_session['study_activity_id'],))
-          activity = cursor.fetchone()
-          if not activity:
-              print(f"Study activity with id {new_session['study_activity_id']} does not exist")
-              cursor.execute('SELECT * FROM study_activities')
-              print("Available study activities:", [dict(row) for row in cursor.fetchall()])
-              return jsonify({'error': f'Study activity with id {new_session["study_activity_id"]} does not exist'}), 400
-          
-          cursor.execute('''
-              INSERT INTO study_sessions (group_id, study_activity_id, created_at)
-              VALUES (?, ?, ?)
-          ''', (new_session['group_id'], new_session['study_activity_id'], 
-                new_session['created_at']))
-          
-          app.db.commit()
-          new_session['id'] = cursor.lastrowid
-          
-          print(f"Study session created successfully: {new_session}")
-          
-          return jsonify({
-              'message': 'Study session created successfully',
-              'session': new_session
-          }), 201
+        # Insert new study session
+        cursor.execute('''
+          INSERT INTO study_sessions (group_id, study_activity_id)
+          VALUES (?)
+        ''', (new_session['group_id'], new_session['study_activity_id'], ))
+        
+        # Commit the transaction
+        db_conn.commit()
+        
+        # Return success response
+        return jsonify({
+          'message': 'Study session created successfully',
+          'session': new_session
+        }), 201
+      
       except sqlite3.IntegrityError as e:
-          # Handle foreign key constraint violations
-          print(f"Integrity Error: {e}")
-          return jsonify({'error': f'Integrity Error: {str(e)}'}), 400
-      except Exception as e:
-          import traceback
-          print("Unexpected error occurred:")
-          traceback.print_exc()  # Print full traceback to console
-          return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+        # Handle any remaining integrity errors
+        return jsonify({'error': 'Invalid group_id or study_activity_id'}), 400
+      except sqlite3.Error as e:
+        # Handle any database insertion errors
+        return jsonify({'error': 'Failed to insert study session'}), 500
+      
+    except Exception as e:
+      # Catch any unexpected errors
+      return jsonify({'error': str(e)}), 500
 
-=======
->>>>>>> efcf349107dbf015287c66b6ddda4b3dbd1b7279
-=======
->>>>>>> efcf349107dbf015287c66b6ddda4b3dbd1b7279
   @app.route('/api/study-sessions/<id>', methods=['GET'])
   @cross_origin()
   def get_study_session(id):
@@ -166,7 +140,6 @@ def load(app):
           g.name as group_name,
           sa.id as activity_id,
           sa.name as activity_name,
-          ss.created_at,
           COUNT(wri.id) as review_items_count
         FROM study_sessions ss
         JOIN groups g ON g.id = ss.group_id
@@ -218,8 +191,6 @@ def load(app):
           'group_name': session['group_name'],
           'activity_id': session['activity_id'],
           'activity_name': session['activity_name'],
-          'start_time': session['created_at'],
-          'end_time': session['created_at'],  # For now, just use the same time
           'review_items_count': session['review_items_count']
         },
         'words': [{
